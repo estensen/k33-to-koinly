@@ -159,6 +159,27 @@ func TestFullConversion(t *testing.T) {
 	}
 }
 
+func TestInvalidCSVReturnsError(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"missing Type/Status column", "TradeID,Side,Amount,Timestamp (UTC)\n"},
+		{"missing Timestamp column", "Type/Status,TradeID,Side,Amount\n"},
+		{"completely unrelated CSV", "Name,Age,Email\nJohn,30,john@example.com\n"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			conv := New()
+			err := conv.Process(strings.NewReader(test.input), &strings.Builder{})
+			if err == nil {
+				t.Error("Expected error for invalid K33 CSV, got nil")
+			}
+		})
+	}
+}
+
 func TestDryRunProducesSameRecords(t *testing.T) {
 	// Process to get expected record count
 	output := &strings.Builder{}

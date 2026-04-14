@@ -62,6 +62,10 @@ func (c *Converter) parseRecords(in io.Reader) ([]KoinlyRecord, error) {
 		return nil, fmt.Errorf("reading header: %w", err)
 	}
 
+	if err := validateHeader(header); err != nil {
+		return nil, err
+	}
+
 	var records []KoinlyRecord
 	for {
 		row, err := reader.Read()
@@ -139,6 +143,20 @@ func (c *Converter) ProcessDryRun(in io.Reader, out io.Writer) error {
 			r.Description)
 	}
 
+	return nil
+}
+
+func validateHeader(header []string) error {
+	required := []string{"Type/Status", "Timestamp (UTC)"}
+	clean := make(map[string]bool, len(header))
+	for _, col := range header {
+		clean[strings.TrimSpace(strings.TrimPrefix(col, "\ufeff"))] = true
+	}
+	for _, req := range required {
+		if !clean[req] {
+			return fmt.Errorf("missing required column %q: not a valid K33 export", req)
+		}
+	}
 	return nil
 }
 
