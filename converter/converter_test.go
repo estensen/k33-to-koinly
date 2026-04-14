@@ -29,6 +29,8 @@ func TestFormatTradeID(t *testing.T) {
 	}{
 		{"1000000012345", "1000000012345"},
 		{"1.000000012345e+12", "1000000012345"},
+		{"9007199254740993", "9007199254740993"},       // exceeds float64 precision
+		{"9.007199254740993e+15", "9007199254740993"},   // scientific notation, exceeds float64 precision
 		{"", ""},
 	}
 

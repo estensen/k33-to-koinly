@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strconv"
+	"math/big"
 	"strings"
 	"time"
 )
@@ -202,13 +202,18 @@ func formatTradeID(tradeID string) string {
 	if tradeID == "" {
 		return ""
 	}
-	
-	// Handle scientific notation
-	if f, err := strconv.ParseFloat(tradeID, 64); err == nil {
-		return fmt.Sprintf("%.0f", f)
+
+	// Only convert if actually in scientific notation
+	if !strings.ContainsAny(tradeID, "eE") {
+		return tradeID
 	}
-	
-	return tradeID
+
+	// Use big.Float to avoid float64 precision loss on large integers
+	f, _, err := big.ParseFloat(tradeID, 10, 128, big.ToNearestEven)
+	if err != nil {
+		return tradeID
+	}
+	return f.Text('f', 0)
 }
 
 func (c *Converter) processK33Record(k33 K33Record) []KoinlyRecord {
