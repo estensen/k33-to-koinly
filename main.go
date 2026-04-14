@@ -22,7 +22,7 @@ func main() {
 
 	if *dryrun {
 		conv := converter.New()
-		if err := conv.ProcessDryRun(in); err != nil {
+		if err := conv.ProcessDryRun(in, os.Stdout); err != nil {
 			log.Fatal(err)
 		}
 		return

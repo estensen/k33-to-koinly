@@ -54,58 +54,59 @@ func New() *Converter {
 	}
 }
 
-func (c *Converter) Process(in io.Reader, out io.Writer) error {
+func (c *Converter) parseRecords(in io.Reader) ([]KoinlyRecord, error) {
 	reader := csv.NewReader(in)
-	writer := csv.NewWriter(out)
-	defer writer.Flush()
 
-	// Write Koinly header
-	koinlyHeader := []string{
-		"Date", "Sent Amount", "Sent Currency", "Received Amount", "Received Currency",
-		"Fee Amount", "Fee Currency", "Net Worth Amount", "Net Worth Currency", 
-		"Label", "Description", "TxHash",
-	}
-	if err := writer.Write(koinlyHeader); err != nil {
-		return fmt.Errorf("writing header: %w", err)
-	}
-
-	// Read K33 header
 	header, err := reader.Read()
 	if err != nil {
-		return fmt.Errorf("reading header: %w", err)
+		return nil, fmt.Errorf("reading header: %w", err)
 	}
 
-	var koinlyRecords []KoinlyRecord
-
+	var records []KoinlyRecord
 	for {
-		record, err := reader.Read()
+		row, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("reading record: %w", err)
+			return nil, fmt.Errorf("reading record: %w", err)
 		}
 
-		k33Record := parseK33Record(header, record)
-		
-		// Skip rejected trades
-		if k33Record.TradeStatus == "Reject" {
+		k33 := parseK33Record(header, row)
+		if k33.TradeStatus == "Reject" {
 			continue
 		}
-
-		records := c.processK33Record(k33Record)
-		koinlyRecords = append(koinlyRecords, records...)
+		records = append(records, c.processK33Record(k33)...)
 	}
 
-	// Process any remaining unpaired trades
 	for _, trade := range c.trades {
 		if trade.BuyLeg != nil || trade.SellLeg != nil {
 			log.Printf("Warning: Unpaired trade %s", trade.TradeID)
 		}
 	}
 
-	// Write all Koinly records
-	for _, record := range koinlyRecords {
+	return records, nil
+}
+
+func (c *Converter) Process(in io.Reader, out io.Writer) error {
+	records, err := c.parseRecords(in)
+	if err != nil {
+		return err
+	}
+
+	writer := csv.NewWriter(out)
+	defer writer.Flush()
+
+	koinlyHeader := []string{
+		"Date", "Sent Amount", "Sent Currency", "Received Amount", "Received Currency",
+		"Fee Amount", "Fee Currency", "Net Worth Amount", "Net Worth Currency",
+		"Label", "Description", "TxHash",
+	}
+	if err := writer.Write(koinlyHeader); err != nil {
+		return fmt.Errorf("writing header: %w", err)
+	}
+
+	for _, record := range records {
 		row := []string{
 			record.Date, record.SentAmount, record.SentCurrency,
 			record.ReceivedAmount, record.ReceivedCurrency,
@@ -121,42 +122,21 @@ func (c *Converter) Process(in io.Reader, out io.Writer) error {
 	return nil
 }
 
-func (c *Converter) ProcessDryRun(in io.Reader) error {
-	reader := csv.NewReader(in)
-
-	// Read header
-	header, err := reader.Read()
+func (c *Converter) ProcessDryRun(in io.Reader, out io.Writer) error {
+	records, err := c.parseRecords(in)
 	if err != nil {
-		return fmt.Errorf("reading header: %w", err)
+		return err
 	}
 
-	fmt.Println("K33 to Koinly Conversion (Dry Run)")
-	fmt.Println("==================================")
+	fmt.Fprintln(out, "K33 to Koinly Conversion (Dry Run)")
+	fmt.Fprintln(out, "==================================")
 
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("reading record: %w", err)
-		}
-
-		k33Record := parseK33Record(header, record)
-		
-		if k33Record.TradeStatus == "Reject" {
-			fmt.Printf("SKIPPED (Rejected): %s\n", k33Record.TypeStatus)
-			continue
-		}
-
-		records := c.processK33Record(k33Record)
-		for _, koinlyRecord := range records {
-			fmt.Printf("%s | %s %s -> %s %s | %s\n",
-				koinlyRecord.Date,
-				koinlyRecord.SentAmount, koinlyRecord.SentCurrency,
-				koinlyRecord.ReceivedAmount, koinlyRecord.ReceivedCurrency,
-				koinlyRecord.Description)
-		}
+	for _, r := range records {
+		fmt.Fprintf(out, "%s | %s %s -> %s %s | %s\n",
+			r.Date,
+			r.SentAmount, r.SentCurrency,
+			r.ReceivedAmount, r.ReceivedCurrency,
+			r.Description)
 	}
 
 	return nil

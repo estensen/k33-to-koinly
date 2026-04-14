@@ -128,23 +128,23 @@ func TestTradePairing(t *testing.T) {
 	}
 }
 
-func TestFullConversion(t *testing.T) {
-	input := `Type/Status,TradeID,Side,Amount,Trade Status,Asset,Credit_old,Credit Balance,Funded_old,Funded Balance,PndWithdrawal_old,PndWithdrawal Balance,Total_old,Total Balance,Timestamp (UTC),UniqueKey,InternalReportID,DepositTxhash,WithdrawalTxhash,SourceAddress,DestinationAddress
+const testCSVInput = `Type/Status,TradeID,Side,Amount,Trade Status,Asset,Credit_old,Credit Balance,Funded_old,Funded Balance,PndWithdrawal_old,PndWithdrawal Balance,Total_old,Total Balance,Timestamp (UTC),UniqueKey,InternalReportID,DepositTxhash,WithdrawalTxhash,SourceAddress,DestinationAddress
 Withdrawal Complete,,,-500,,USD,0,0,0,0,500,0,500,0,2023/01/16 14:20:30,test123,1001,,,,TestBank
 Trade,1000000012345,Sell,-0.5,Filled,BTC,0,0,1,0.5,0,0,1,0.5,2023/01/15 10:30:45,test456,,,,,
 Trade,1000000012345,Buy,1000,Filled,USD,0,0,0,1000,0,0,0,1000,2023/01/15 10:30:45,test456,,,,,`
 
+func TestFullConversion(t *testing.T) {
 	output := &strings.Builder{}
 	conv := New()
 
-	err := conv.Process(strings.NewReader(input), output)
+	err := conv.Process(strings.NewReader(testCSVInput), output)
 	if err != nil {
 		t.Fatalf("Conversion failed: %v", err)
 	}
 
 	result := output.String()
 	lines := strings.Split(strings.TrimSpace(result), "\n")
-	
+
 	// Should have header + 2 records (1 withdrawal + 1 trade)
 	if len(lines) != 3 {
 		t.Errorf("Expected 3 lines (header + 2 records), got %d", len(lines))
@@ -156,5 +156,36 @@ Trade,1000000012345,Buy,1000,Filled,USD,0,0,0,1000,0,0,0,1000,2023/01/15 10:30:4
 		if len(cols) != 12 {
 			t.Errorf("Line %d has %d columns, expected 12", i+1, len(cols))
 		}
+	}
+}
+
+func TestDryRunProducesSameRecords(t *testing.T) {
+	// Process to get expected record count
+	output := &strings.Builder{}
+	conv := New()
+	if err := conv.Process(strings.NewReader(testCSVInput), output); err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+	csvLines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	expectedRecords := len(csvLines) - 1 // minus header
+
+	// DryRun should produce one output line per record
+	dryOutput := &strings.Builder{}
+	conv2 := New()
+	if err := conv2.ProcessDryRun(strings.NewReader(testCSVInput), dryOutput); err != nil {
+		t.Fatalf("ProcessDryRun failed: %v", err)
+	}
+
+	dryLines := strings.Split(strings.TrimSpace(dryOutput.String()), "\n")
+	// First two lines are the header/separator
+	recordLines := 0
+	for _, line := range dryLines {
+		if strings.Contains(line, "|") {
+			recordLines++
+		}
+	}
+
+	if recordLines != expectedRecords {
+		t.Errorf("DryRun produced %d records, Process produced %d", recordLines, expectedRecords)
 	}
 }
